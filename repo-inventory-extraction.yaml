@@ -1,0 +1,555 @@
+name: repo-inventory-extraction
+description: Extracts a standardized, compact repository inventory for large-scale GitLab->GitHub migration planning.
+triggers:
+  - context:
+      projects: {}
+    manual: {}
+
+action:
+  limits:
+    maxParallel: 10
+    maxTotal: 100
+  steps:
+    - agent:
+        prompt: |-
+          You are a repository inventory extraction agent. You run inside a checked-out Git repository (root is current working directory). Your job is to output concise, machine-friendly values for a fixed set of data points. The execution engine will ask you one question per data point and will store your answer in a CSV column.
+
+          Rules:
+          - Answer ONLY the requested value for that data point. No prose, no explanations, no markdown.
+          - Prefer compact formats: comma-separated lists (no spaces after commas), and JSON with minimal keys.
+          - If unknown/not present, return empty string.
+          - Never output secret values. If you detect secrets, only report counts/types/paths, never contents.
+          - Derive answers by inspecting repo files and git history (e.g., .gitlab-ci.yml, Jenkinsfile, package manifests, build scripts, config, IaC, docs).
+          - If a value is large, summarize with counts and key identifiers. Keep under ~1,000 characters where possible.
+          - Use stable sorting (lexicographic) for lists/JSON arrays so outputs are deterministic.
+          - Paths should be repo-relative, using forward slashes.
+          - For “top N” lists, N=5 unless specified.
+          - For dates, use ISO 8601 (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ if available).
+          - Return strictly valid JSON when asked for JSON.
+    - report:
+        outputs:
+          - key: repo_name
+            string: {}
+            title: repo_name
+            prompt: |-
+              Return the repository directory name (basename of repo root).
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: default_branch
+            string: {}
+            title: default_branch
+            prompt: |-
+              Return the default branch name (prefer origin/HEAD; else main/master; else current branch).
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: is_archived_hint
+            string: {}
+            title: is_archived_hint
+            prompt: |-
+              Return "1" if repo appears archived/retired (e.g., README contains "archived"/"deprecated"/"no longer maintained", or repo has no commits in >24 months); else "0".
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: last_commit_date
+            string: {}
+            title: last_commit_date
+            prompt: |-
+              Return the date of the most recent commit on the default branch in YYYY-MM-DD.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: first_commit_date
+            string: {}
+            title: first_commit_date
+            prompt: |-
+              Return the date of the earliest commit reachable from default branch in YYYY-MM-DD.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: commit_count_default_branch
+            string: {}
+            title: commit_count_default_branch
+            prompt: |-
+              Return the total commit count reachable from default branch as an integer.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: repo_size_mb_hint
+            string: {}
+            title: repo_size_mb_hint
+            prompt: |-
+              Return an approximate repo size in MB as integer (working tree + .git if accessible); else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: uses_git_lfs
+            string: {}
+            title: uses_git_lfs
+            prompt: |-
+              Return "1" if .gitattributes indicates filter=lfs OR any *.lfsconfig exists; else "0".
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: lfs_patterns
+            string: {}
+            title: lfs_patterns
+            prompt: |-
+              If uses_git_lfs=1, return comma-separated glob patterns tracked by LFS from .gitattributes; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: submodules_present
+            string: {}
+            title: submodules_present
+            prompt: |-
+              Return "1" if .gitmodules exists; else "0".
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: submodules_json
+            string: {}
+            title: submodules_json
+            prompt: |-
+              If .gitmodules exists, return JSON array of {"path":"...","url":"...","branch":"..."} entries (omit keys that are missing); else empty string.
+              FINAL INSTRUCTION
+              Return ONLY the JSON array or empty string. No extra text.
+          - key: codeowners_paths
+            string: {}
+            title: codeowners_paths
+            prompt: |-
+              Return comma-separated paths where CODEOWNERS files exist (common locations: CODEOWNERS,.github/CODEOWNERS,docs/CODEOWNERS); else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: codeowners_owners_top
+            string: {}
+            title: codeowners_owners_top5
+            prompt: |-
+              Parse CODEOWNERS rules; return top 5 most frequent owners as comma-separated tokens (emails or @handles) sorted by frequency desc then lexicographic; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: maintainers_from_metadata
+            string: {}
+            title: maintainers_from_metadata
+            prompt: |-
+              Return comma-separated maintainer emails/usernames found in maintainers files (e.g., MAINTAINERS, OWNERS, .github/OWNERS, metadata YAML) if present; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: top_committers_emails_top
+            string: {}
+            title: top_committers_emails_top5
+            prompt: |-
+              Return top 5 committer emails by commit count on default branch as comma-separated emails; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: top_committers_counts_json
+            string: {}
+            title: top_committers_counts_json
+            prompt: |-
+              Return JSON array of top 5 committers with {"email":"...","commits":N} from default branch; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the JSON array or empty string. No extra text.
+          - key: primary_languages_top
+            string: {}
+            title: primary_languages_top5
+            prompt: |-
+              Return top 5 languages by LOC as JSON array [{"lang":"...","loc":N}] using a best-effort heuristic (file extensions; ignore vendor/build dirs like node_modules,target,dist,build,.git); else empty.
+              FINAL INSTRUCTION
+              Return ONLY the JSON array or empty string. No extra text.
+          - key: repo_type_tags
+            string: {}
+            title: repo_type_tags
+            prompt: |-
+              Return comma-separated tags describing repo type inferred from contents: one or more of {lib,service,webapp,mobile,desktop,cli,data,ml,infra,monorepo,docs,tooling}. No spaces.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: frameworks_tools_csv
+            string: {}
+            title: frameworks_tools_csv
+            prompt: |-
+              Return comma-separated detected frameworks/tools (e.g.,spring,quarkus,dotnet,react,angular,vue,django,flask,rails,android,ios,flutter,react-native,electron,spark,airflow,dbt,terraform,helm,ansible,bazel). No spaces.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: build_systems_csv
+            string: {}
+            title: build_systems_csv
+            prompt: |-
+              Return comma-separated build systems detected (e.g.,maven,gradle,msbuild,npm,yarn,pnpm,poetry,pip,conda,go,cargo,make,bazel,buck,pants,nx,turborepo,cmake). No spaces.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: build_entrypoints_csv
+            string: {}
+            title: build_entrypoints_csv
+            prompt: |-
+              Return comma-separated build entrypoint files present (repo-relative): e.g.,.gitlab-ci.yml,Jenkinsfile,Makefile,pom.xml,build.gradle,package.json,pyproject.toml,go.mod,Cargo.toml,*.sln,fastlane/Fastfile,buildspec.yml. No spaces.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: monorepo_hint
+            string: {}
+            title: monorepo_hint
+            prompt: |-
+              Return "1" if monorepo indicators exist (e.g., multiple package manifests, workspace configs like pnpm-workspace.yaml,lerna.json,nx.json,turbo.json, Bazel WORKSPACE, many services under /services); else "0".
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: ci_systems_csv
+            string: {}
+            title: ci_systems_csv
+            prompt: |-
+              Return comma-separated CI systems detected from files/config: gitlab_ci,jenkins,github_actions,circleci,azure_pipelines,buildkite,teamcity,travis,bitrise,custom. No spaces.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: gitlab_ci_present
+            string: {}
+            title: gitlab_ci_present
+            prompt: |-
+              Return "1" if .gitlab-ci.yml exists; else "0".
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: gitlab_ci_includes_csv
+            string: {}
+            title: gitlab_ci_includes_csv
+            prompt: |-
+              If .gitlab-ci.yml exists, return comma-separated include targets (local/file, project/ref, remote URL) in normalized short form; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: gitlab_ci_job_count
+            string: {}
+            title: gitlab_ci_job_count
+            prompt: |-
+              If .gitlab-ci.yml exists, return total number of jobs defined (best-effort parse); else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: gitlab_ci_stages_csv
+            string: {}
+            title: gitlab_ci_stages_csv
+            prompt: |-
+              If .gitlab-ci.yml exists, return comma-separated stage names in order; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: gitlab_ci_runner_tags_csv
+            string: {}
+            title: gitlab_ci_runner_tags_csv
+            prompt: |-
+              If .gitlab-ci.yml exists, return comma-separated unique runner tags referenced; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: gitlab_ci_images_csv
+            string: {}
+            title: gitlab_ci_images_csv
+            prompt: |-
+              If .gitlab-ci.yml exists, return comma-separated unique Docker images referenced (image: fields); else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: gitlab_ci_services_csv
+            string: {}
+            title: gitlab_ci_services_csv
+            prompt: |-
+              If .gitlab-ci.yml exists, return comma-separated unique service images referenced; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: gitlab_ci_artifacts_hint
+            string: {}
+            title: gitlab_ci_artifacts_hint
+            prompt: |-
+              If .gitlab-ci.yml exists, return JSON {"jobs_with_artifacts":N,"max_expire_in":"<value>"} best-effort; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object or empty string. No extra text.
+          - key: gitlab_ci_cache_hint
+            string: {}
+            title: gitlab_ci_cache_hint
+            prompt: |-
+              If .gitlab-ci.yml exists, return JSON {"uses_cache":0|1,"cache_keys":N} best-effort; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object or empty string. No extra text.
+          - key: jenkins_present
+            string: {}
+            title: jenkins_present
+            prompt: |-
+              Return "1" if Jenkinsfile exists anywhere OR /jenkins/ pipelines exist; else "0".
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: jenkinsfile_paths_csv
+            string: {}
+            title: jenkinsfile_paths_csv
+            prompt: |-
+              If Jenkins present, return comma-separated Jenkinsfile paths (repo-relative); else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: jenkins_type
+            string: {}
+            title: jenkins_type
+            prompt: |-
+              If Jenkinsfile exists, return "declarative" if it contains "pipeline {"; "scripted" if it contains "node {" without pipeline; else "unknown".
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: jenkins_agents_csv
+            string: {}
+            title: jenkins_agents_csv
+            prompt: |-
+              If Jenkinsfile exists, return comma-separated agent labels/images referenced (best-effort); else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: jenkins_shared_libs_csv
+            string: {}
+            title: jenkins_shared_libs_csv
+            prompt: |-
+              If Jenkinsfile uses shared libraries (e.g., @Library), return comma-separated library identifiers; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: github_actions_present
+            string: {}
+            title: github_actions_present
+            prompt: |-
+              Return "1" if .github/workflows/*.yml exists; else "0".
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: github_actions_workflow_count
+            string: {}
+            title: github_actions_workflow_count
+            prompt: |-
+              If GitHub Actions present, return number of workflow files; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: other_ci_files_csv
+            string: {}
+            title: other_ci_files_csv
+            prompt: |-
+              Return comma-separated known CI config files found (e.g.,.circleci/config.yml,azure-pipelines.yml,buildkite pipeline,teamcity settings,bitrise.yml,.travis.yml); else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: requires_windows
+            string: {}
+            title: requires_windows
+            prompt: |-
+              Return "1" if build/CI explicitly targets Windows (e.g., .sln, msbuild, powershell scripts, windows runners); else "0".
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: requires_macos
+            string: {}
+            title: requires_macos
+            prompt: |-
+              Return "1" if targets macOS/iOS tooling (e.g., xcodeproj, fastlane for iOS, macos runners); else "0".
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: requires_linux
+            string: {}
+            title: requires_linux
+            prompt: |-
+              Return "1" if targets Linux tooling (docker, bash, typical server builds); else "0".
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: requires_gpu_hint
+            string: {}
+            title: requires_gpu_hint
+            prompt: |-
+              Return "1" if GPU/CUDA references exist (cuda, nvidia-docker, torch cuda, tensorflow-gpu); else "0".
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: docker_in_docker_hint
+            string: {}
+            title: docker_in_docker_hint
+            prompt: |-
+              Return "1" if CI uses docker:dind or privileged docker builds; else "0".
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: network_dependencies_csv
+            string: {}
+            title: network_dependencies_csv
+            prompt: |-
+              Return comma-separated internal endpoints/hosts referenced in build/deploy configs (best-effort; strip secrets; include hostnames only); else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: subtree_or_vendor_deps_hint
+            string: {}
+            title: subtree_or_vendor_deps_hint
+            prompt: |-
+              Return "1" if repo contains vendored/internal dependencies (e.g., /vendor with internal libs, third_party, checked-in jars); else "0".
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: internal_deps_json
+            string: {}
+            title: internal_deps_json
+            prompt: |-
+              Return JSON array of internal repo/package dependencies inferred from manifests and configs. Each entry: {"type":"npm|maven|pypi|nuget|go|cargo|docker|git|terraform|helm|other","id":"<package/module/image/url>","scope":"runtime|build|ci","file":"<path>"}; empty if none.
+              FINAL INSTRUCTION
+              Return ONLY the JSON array or empty string. No extra text.
+          - key: git_dependencies_json
+            string: {}
+            title: git_dependencies_json
+            prompt: |-
+              Return JSON array of git-based dependencies found (submodules, git urls in manifests): {"url":"...","ref":"...","path":"...","file":"..."} (omit missing keys); else empty.
+              FINAL INSTRUCTION
+              Return ONLY the JSON array or empty string. No extra text.
+          - key: artifact_publishers_json
+            string: {}
+            title: artifact_publishers_json
+            prompt: |-
+              Return JSON array of publish outputs inferred (packages/images): {"type":"npm|maven|nuget|pypi|docker|helm|other","name":"...","registry":"...","file":"..."}; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the JSON array or empty string. No extra text.
+          - key: terraform_module_sources_json
+            string: {}
+            title: terraform_module_sources_json
+            prompt: |-
+              If Terraform present, return JSON array of module sources {"source":"...","path":"..."}; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the JSON array or empty string. No extra text.
+          - key: helm_charts_json
+            string: {}
+            title: helm_charts_json
+            prompt: |-
+              If Helm charts present, return JSON array {"chart_path":"...","name":"..."} for each chart; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the JSON array or empty string. No extra text.
+          - key: release_tag_pattern_hint
+            string: {}
+            title: release_tag_pattern_hint
+            prompt: |-
+              Return a concise regex-like hint for tag naming (e.g., "^v\\d+\\.\\d+\\.\\d+$") inferred from existing git tags; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: has_changelog
+            string: {}
+            title: has_changelog
+            prompt: |-
+              Return "1" if CHANGELOG.md or similar exists; else "0".
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: deployment_targets_csv
+            string: {}
+            title: deployment_targets_csv
+            prompt: |-
+              Return comma-separated deployment target types detected: kubernetes,helm,argo,flux,terraform,ansible,serverless,vm,mobile_store,desktop_release,none. No spaces.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: environments_csv
+            string: {}
+            title: environments_csv
+            prompt: |-
+              Return comma-separated environment names detected (dev,stage,prod,qa,uat,etc.) from CI/deploy configs; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: approvals_gates_hint
+            string: {}
+            title: approvals_gates_hint
+            prompt: |-
+              Return JSON {"manual_gates":0|1,"approval_keywords_csv":"..."} inferred from CI (manual jobs, approval steps); else empty.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object or empty string. No extra text.
+          - key: test_tools_csv
+            string: {}
+            title: test_tools_csv
+            prompt: |-
+              Return comma-separated test frameworks/tools detected (e.g.,junit,pytest,rspec,jest,mocha,go_test,gradle_test,nunit,xctest,robot,cypress,playwright). No spaces.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: coverage_tools_csv
+            string: {}
+            title: coverage_tools_csv
+            prompt: |-
+              Return comma-separated coverage tools detected (jacoco,cobertura,lcov,coveragepy,nyc,coverlet). No spaces.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: lint_format_tools_csv
+            string: {}
+            title: lint_format_tools_csv
+            prompt: |-
+              Return comma-separated linters/formatters detected (eslint,prettier,ruff,black,isort,flake8,spotbugs,checkstyle,ktlint,gofmt,golangci-lint,clang-format). No spaces.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: security_tools_csv
+            string: {}
+            title: security_tools_csv
+            prompt: |-
+              Return comma-separated security tools detected (snyk,trivy,grype,sonarqube,semgrep,bandit,dependabot,gitlab_sast,gitlab_dast). No spaces.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: sbom_signing_hint
+            string: {}
+            title: sbom_signing_hint
+            prompt: |-
+              Return JSON {"sbom":0|1,"signing":0|1,"tools_csv":"..."} based on references to cyclonedx,syft,cosign,slsa,provenance; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object or empty string. No extra text.
+          - key: secrets_references_csv
+            string: {}
+            title: secrets_references_csv
+            prompt: |-
+              Return comma-separated secret reference identifiers found (e.g., CI var names like AWS_ACCESS_KEY_ID, VAULT_ADDR, GCP_SA_KEY) without values; limit 30; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: secret_scanner_findings_json
+            string: {}
+            title: secret_scanner_findings_json
+            prompt: |-
+              Return JSON {"findings":N,"types_csv":"...","paths_top5_csv":"..."} from best-effort scanning (never include secret values); else empty.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object or empty string. No extra text.
+          - key: compliance_flags_csv
+            string: {}
+            title: compliance_flags_csv
+            prompt: |-
+              Return comma-separated compliance flags inferred from keywords/config: pii,phi,pci,gdpr,export,sox,none. No spaces. If none detected, return "none".
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: protected_branch_hint
+            string: {}
+            title: protected_branch_hint
+            prompt: |-
+              Return "1" if repo has evidence of protected branch policies in docs/config (e.g., mentions required approvals/status checks); else "0".
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: merge_strategy_hint
+            string: {}
+            title: merge_strategy_hint
+            prompt: |-
+              Return one of: merge,squash,rebase,unknown inferred from docs/config (CONTRIBUTING, merge request templates); else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: required_reviewers_hint
+            string: {}
+            title: required_reviewers_hint
+            prompt: |-
+              Return JSON {"codeowners":0|1,"min_approvals":N} inferred from CODEOWNERS or docs; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object or empty string. No extra text.
+          - key: gitlab_url_references_count
+            string: {}
+            title: gitlab_url_references_count
+            prompt: |-
+              Return integer count of occurrences of "gitlab" URLs (http(s)://...gitlab...) in tracked text files; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: external_integrations_csv
+            string: {}
+            title: external_integrations_csv
+            prompt: |-
+              Return comma-separated integrations detected (jira,servicenow,slack,teams,pagerduty,datadog,splunk,sonarqube,artifactory,nexus,vault) from configs/docs; else empty.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: webhooks_hint
+            string: {}
+            title: webhooks_hint
+            prompt: |-
+              Return "1" if webhook configs/scripts are present (best-effort: .gitlab, hooks, tooling mentioning webhooks); else "0".
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: complexity_score
+            string: {}
+            title: complexity_score_0_100
+            prompt: |-
+              Return an integer 0-100 estimating migration complexity using best-effort heuristic: CI complexity, runner constraints, dependencies, size, LFS, compliance flags. Empty if cannot estimate.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: migration_lane
+            string: {}
+            title: migration_lane
+            prompt: |-
+              Return one of: A_simple,B_standard,C_custom,D_regulated based on detected complexity and compliance. Empty if cannot decide.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: readiness_blockers_csv
+            string: {}
+            title: readiness_blockers_csv
+            prompt: |-
+              Return comma-separated blockers detected: no_owner,unknown_ci,custom_runner,secrets_migration,compliance_review,heavy_deps,submodules,large_lfs,stale_repo,none. No spaces. If none, return "none".
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
+          - key: owner_migration_brief
+            string: {}
+            title: owner_migration_brief_280c
+            prompt: |-
+              Return a single-line brief <=280 chars: key CI system(s), primary stack, required runners, and top blocker(s). No newlines.
+              FINAL INSTRUCTION
+              Return ONLY the value. No extra text.
