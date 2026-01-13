@@ -1,0 +1,30 @@
+action:
+    limits:
+        maxParallel: 10
+        maxTotal: 100
+    steps:
+        - agent:
+              prompt: Hello World!
+        - task:
+              command: npm test
+        - report:
+              outputs:
+                  - key: report1
+                    string: {}
+                    title: report
+                    prompt: |-
+                        You are a software engineering agent.
+                        FINAL INSTRUCTION
+                        Return ONLY the JSON object. No extra text.
+                  - key: shellcommand
+                    string: {}
+                    title: shell
+                    command: |-
+                        echo $VAR
+
+description: An example workflow that runs tests on a project
+name: mo-example-workflow
+triggers:
+    - context:
+          projects: {}
+      manual: {}
