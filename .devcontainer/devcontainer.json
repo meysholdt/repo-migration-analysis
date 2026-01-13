@@ -1,0 +1,4 @@
+{
+	"name": "Ona",
+    "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04"
+}
