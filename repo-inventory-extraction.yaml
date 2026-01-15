@@ -42,17 +42,25 @@ action:
                 "commit_count": 0,
                 "size_mb_hint": null,
                 "uses_lfs": false,
-                "lfs_patterns": [],
-                "submodules_present": false,
-                "submodules": [],
-                "applications": []
+                "lfs_patterns": []
               }
               Notes:
-              - archived_hint, uses_lfs, submodules_present are booleans.
+              - archived_hint, uses_lfs are booleans.
               - commit_count is an integer (use 0 if unknown).
               - size_mb_hint is integer MB or null if unknown.
               - lfs_patterns is an array of glob strings.
-              - submodules entries are objects: {"path":"","url":"","branch":""} using empty string when unknown.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+
+          - key: applications
+            string: {}
+            title: applications
+            prompt: |-
+              Extract detected applications in the repo as JSON with this schema (do not add keys):
+              {
+                "applications": []
+              }
+              Notes:
               - applications is an array of detected applications in the repo. Each entry: {"name":"","description":""}.
                 Detect applications by common indicators such as:
                 - deployable units (Dockerfiles, Helm charts, k8s manifests, serverless configs)
@@ -61,47 +69,91 @@ action:
                 For description, use the best short description from README/module docs near the app, or from manifest fields (description), else empty.
               FINAL INSTRUCTION
               Return ONLY the JSON object. No extra text.
-          - key: ownership
+          - key: codeowners
             string: {}
-            title: ownership
+            title: codeowners
             prompt: |-
-              Extract ownership and routing signals as JSON with this schema (do not add keys):
+              Extract top code owners as JSON with this schema (do not add keys):
               {
-                "codeowners_paths": [],
-                "codeowners_top5": [],
-                "maintainers": [],
-                "top_committers_top5": []
+                "codeowners": []
               }
               Notes:
-              - codeowners_paths: array of repo-relative paths.
-              - codeowners_top5: array of up to 5 owner tokens (emails or @handles), ordered by frequency then lexicographic.
-              - maintainers: array of emails/usernames from MAINTAINERS/OWNERS/metadata when present.
-              - top_committers_top5: array of up to 5 objects {"email":"","commits":0}.
+              - codeowners: array of up to 5 owner tokens (emails or @handles), ordered by frequency then lexicographic.
               FINAL INSTRUCTION
               Return ONLY the JSON object. No extra text.
-          - key: stack
+          - key: top_committers
             string: {}
-            title: stack
+            title: top_committers
             prompt: |-
-              Extract tech stack, build entrypoints, and stack maintainers as JSON with this schema (do not add keys):
+              Extract top committers as JSON with this schema (do not add keys):
               {
-                "primary_languages_top5": [],
-                "repo_type_tags": [],
-                "frameworks_tools": [],
-                "build_systems": [],
-                "build_entrypoints": [],
-                "monorepo_hint": false,
-                "top_stack_maintainers_top5": []
+                "top_committers": []
               }
               Notes:
-              - primary_languages_top5: array of up to 5 objects {"lang":"","loc":0}.
-              - repo_type_tags values from {lib,service,webapp,mobile,desktop,cli,data,ml,infra,monorepo,docs,tooling}.
-              - frameworks_tools/build_systems/build_entrypoints: arrays of strings, lexicographically sorted.
-              - monorepo_hint is boolean.
-              - top_stack_maintainers_top5: up to 5 objects {"email":"","commits":0}, derived by attributing commits to files that define/maintain the stack:
+              - top_committers: array of up to 20 objects {"email":"","commits":0}.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: primary_languages
+            string: {}
+            title: primary_languages
+            prompt: |-
+              Extract primary languages as JSON with this schema (do not add keys):
+              {
+                "primary_languages": []
+              }
+              Notes:
+              - primary_languages: array of up to 10 objects {"lang":"","loc":0}.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: frameworks_tools
+            string: {}
+            title: frameworks_tools
+            prompt: |-
+              Extract frameworks and tools as JSON with this schema (do not add keys):
+              {
+                "frameworks_tools": []
+              }
+              Notes:
+              - frameworks_tools: array of strings, lexicographically sorted.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: build_systems
+            string: {}
+            title: build_systems
+            prompt: |-
+              Extract build systems as JSON with this schema (do not add keys):
+              {
+                "build_systems": []
+              }
+              Notes:
+              - build_systems: array of strings, lexicographically sorted.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: build_entrypoints
+            string: {}
+            title: build_entrypoints
+            prompt: |-
+              Extract build entrypoints as JSON with this schema (do not add keys):
+              {
+                "build_entrypoints": []
+              }
+              Notes:
+              - build_entrypoints: array of strings, lexicographically sorted.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: top_stack_maintainers
+            string: {}
+            title: top_stack_maintainers
+            prompt: |-
+              Extract top stack maintainers as JSON with this schema (do not add keys):
+              {
+                "top_stack_maintainers": []
+              }
+              Notes:
+              - top_stack_maintainers: up to 10 objects {"email":"","commits":0}, derived by attributing commits to files that define/maintain the stack:
                 include commits touching framework/build system config and entrypoints such as:
                 package.json,yarn.lock,pnpm-lock.yaml,poetry.lock,pyproject.toml,requirements*.txt,pom.xml,build.gradle*,settings.gradle*,go.mod,go.sum,Cargo.toml,Cargo.lock,*.csproj,*.fsproj,*.sln,gradle.properties,Makefile,CMakeLists.txt,bazel WORKSPACE/BUILD files,nx.json,turbo.json,lerna.json, and similar.
-                Use default-branch history and count commits per author email across these files; return top 5.
+                Use default-branch history and count commits per author email across these files; return top 10.
               FINAL INSTRUCTION
               Return ONLY the JSON object. No extra text.
           - key: ci
@@ -134,14 +186,14 @@ action:
                   "workflow_count": null
                 },
                 "other_ci_configs": [],
-                "top_ci_maintainers_top5": []
+                "top_ci_maintainers": []
               }
               Notes:
               - present fields and uses_cache are booleans.
               - job_count, workflow_count, cache_keys, jobs_with_artifacts are integers or null.
               - artifacts.max_expire_in is a string (e.g., "1 week") or empty string.
               - jenkins.type is one of "declarative","scripted","unknown","".
-              - top_ci_maintainers_top5: up to 5 objects {"email":"","commits":0}, derived by counting commits per author email on default-branch history that touched CI-related files such as:
+              - top_ci_maintainers: up to 10 objects {"email":"","commits":0}, derived by counting commits per author email on default-branch history that touched CI-related files such as:
                 .gitlab-ci.yml, any included GitLab CI templates in-repo, Jenkinsfile(s), .github/workflows/*.yml, .circleci/config.yml, azure-pipelines.yml, buildkite pipeline files, teamcity settings, travis/bitrise configs, and any ci/ or .ci/ directories.
               FINAL INSTRUCTION
               Return ONLY the JSON object. No extra text.
@@ -156,37 +208,63 @@ action:
                 "requires_linux": false,
                 "requires_gpu_hint": false,
                 "docker_in_docker_hint": false,
-                "network_dependencies_top30": []
+                "network_dependencies": []
               }
               Notes:
-              - network_dependencies_top30: array of hostnames only (no credentials, no urls with paths), lexicographically sorted, max 30.
+              - network_dependencies: array of hostnames only (no credentials, no urls with paths), lexicographically sorted, max 30.
               FINAL INSTRUCTION
               Return ONLY the JSON object. No extra text.
-          - key: dependencies
+          - key: required_internal_artifacts
             string: {}
-            title: dependencies
+            title: required_internal_artifacts
             prompt: |-
-              Extract dependencies and coupling as JSON with this schema (do not add keys):
+              Extract required internal artifacts as JSON with this schema (do not add keys):
               {
-                "subtree_or_vendor_deps_hint": false,
-                "internal_deps": [],
-                "git_dependencies": [],
-                "artifact_publishers": [],
-                "terraform_module_sources": [],
-                "helm_charts": [],
-                "upstream_repositories": [],
-                "downstream_repositories": []
+                "required_internal_artifacts": []
               }
               Notes:
-              - internal_deps entries: {"type":"","id":"","scope":"","file":""} with type in {npm,maven,pypi,nuget,go,cargo,docker,git,terraform,helm,other} and scope in {runtime,build,ci}.
-              - git_dependencies entries: {"url":"","ref":"","path":"","file":""} (use empty string when unknown).
-              - artifact_publishers entries: {"type":"","name":"","registry":"","file":""}
-              - terraform_module_sources entries: {"source":"","path":""}
-              - helm_charts entries: {"chart_path":"","name":""}
-              - upstream_repositories: repositories this repo depends on, best-effort, as array of objects:
+              - required_internal_artifacts: array of internal artifacts (packages, files, modules) downloaded from internal systems. Each entry:
+                {"name":"","type":"","source":""}
+                where:
+                * name: the artifact identifier (package name, module name, chart name, image name, etc.)
+                * type: artifact type from {npm,maven,pypi,nuget,go,cargo,docker,helm,terraform,other}
+                * source: the internal system/registry from which the artifact is obtained (hostname or registry name, e.g., "npm.internal.company.com", "artifactory.company.com", "internal-docker-registry:5000")
+              - ONLY include artifacts from internal/private systems. EXCLUDE artifacts from public registries (npmjs.org, maven central, pypi.org, docker.io, etc.).
+              - Detect internal systems by:
+                * private registry URLs in package manager configs (.npmrc, pip.conf, settings.xml, .yarnrc, go env, cargo config, etc.)
+                * internal hostnames/IPs in manifests
+                * authentication requirements in configs
+                * corporate domain patterns
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: required_repos
+            string: {}
+            title: required_repos
+            prompt: |-
+              Extract required repository dependencies and submodules as JSON with this schema (do not add keys):
+              {
+                "required_repos": [],
+                "submodules": []
+              }
+              Notes:
+              - required_repos: repositories this repo depends on, best-effort, as array of objects:
                 {"id":"","how":"manifest|git|ci|iac|doc","evidence_file":""}
                 Where id is a repo-like identifier or git URL or internal repo path inferred from internal_deps/git_dependencies/terraform module sources/CI includes/docs.
-              - downstream_repositories: repositories that depend on this repo, best-effort, as array of objects:
+              - submodules: git submodules referenced by this repo, as array of objects:
+                {"path":"","url":"","branch":""}
+                Use empty string when unknown.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: downstream_repos
+            string: {}
+            title: downstream_repos
+            prompt: |-
+              Extract downstream repository dependencies as JSON with this schema (do not add keys):
+              {
+                "downstream_repos": []
+              }
+              Notes:
+              - downstream_repos: repositories that depend on this repo, best-effort, as array of objects:
                 {"id":"","how":"doc|badge|publish|ci_trigger","evidence_file":""}
                 Only include if explicitly discoverable within this repo (e.g., README lists consumers, badges/links, publish docs that name consuming repos, CI triggers targeting other repos).
                 If not discoverable, return empty array.
@@ -196,20 +274,30 @@ action:
             string: {}
             title: release_deploy
             prompt: |-
-              Extract release and deployment signals (including released artifacts) as JSON with this schema (do not add keys):
+              Extract release and deployment signals as JSON with this schema (do not add keys):
               {
                 "release_tag_pattern_hint": "",
                 "has_changelog": false,
                 "deployment_targets": [],
                 "environments": [],
-                "approvals": { "manual_gates": false, "approval_keywords_top20": [] },
-                "artifacts": []
+                "approvals": { "manual_gates": false, "approval_keywords": [] }
               }
               Notes:
               - deployment_targets values from {kubernetes,helm,argo,flux,terraform,ansible,serverless,vm,mobile_store,desktop_release,none}.
               - environments: array of environment names, lexicographically sorted.
-              - approval_keywords_top20: array of tokens/keywords found, max 20.
-              - artifacts: list all artifacts released/published from this repo, best-effort. Each entry:
+              - approval_keywords: array of tokens/keywords found, max 20.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: released_artifacts
+            string: {}
+            title: released_artifacts
+            prompt: |-
+              Extract released artifacts as JSON with this schema (do not add keys):
+              {
+                "released_artifacts": []
+              }
+              Notes:
+              - released_artifacts: list all artifacts released/published from this repo, best-effort. Each entry:
                 {"type":"","name":"","destination":"","evidence_file":""}
                 type examples: npm,maven,nuget,pypi,docker,helm,terraform_module,github_release,mobile_store,desktop_installer,other
                 destination examples: registry host/path, repository, bucket, store name, or empty if unknown.
@@ -232,21 +320,31 @@ action:
               - arrays are lexicographically sorted.
               FINAL INSTRUCTION
               Return ONLY the JSON object. No extra text.
-          - key: secrets_compliance
+          - key: required_secrets
             string: {}
-            title: secrets_compliance
+            title: required_secrets
             prompt: |-
-              Extract secrets and compliance metadata as JSON with this schema (do not add keys):
+              Extract required secrets as JSON with this schema (do not add keys):
               {
-                "secrets_references_top30": [],
-                "secret_scanner_findings": { "findings": null, "types": [], "paths_top5": [] },
+                "secrets_references": []
+              }
+              Notes:
+              - secrets_references: array of secret reference identifiers (variable names, vault keys) without values, max 30.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: compliance
+            string: {}
+            title: compliance
+            prompt: |-
+              Extract compliance metadata as JSON with this schema (do not add keys):
+              {
+                "secret_scanner_findings": { "findings": null, "types": [], "paths": [] },
                 "compliance_flags": []
               }
               Notes:
-              - secrets_references_top30: array of secret reference identifiers (variable names, vault keys) without values, max 30.
               - secret_scanner_findings.findings is integer or null.
               - secret_scanner_findings.types: array of finding type labels, sorted.
-              - secret_scanner_findings.paths_top5: array of up to 5 repo-relative paths.
+              - secret_scanner_findings.paths: array of up to 5 repo-relative paths.
               - compliance_flags values from {pii,phi,pci,gdpr,export,sox,none}; if none detected, return ["none"].
               FINAL INSTRUCTION
               Return ONLY the JSON object. No extra text.
@@ -256,6 +354,7 @@ action:
             prompt: |-
               Extract governance and integration signals as JSON with this schema (do not add keys):
               {
+                "codeowners_paths": [],
                 "protected_branch_hint": false,
                 "merge_strategy_hint": "",
                 "required_reviewers": { "codeowners": false, "min_approvals": null },
@@ -264,26 +363,9 @@ action:
                 "webhooks_hint": false
               }
               Notes:
+              - codeowners_paths: array of repo-relative paths to CODEOWNERS files.
               - merge_strategy_hint is one of "merge","squash","rebase","unknown","".
               - required_reviewers.min_approvals and gitlab_url_references_count are integers or null.
               - external_integrations values from {jira,servicenow,slack,teams,pagerduty,datadog,splunk,sonarqube,artifactory,nexus,vault}, sorted.
-              FINAL INSTRUCTION
-              Return ONLY the JSON object. No extra text.
-          - key: planning
-            string: {}
-            title: planning
-            prompt: |-
-              Produce migration planning outputs as JSON with this schema (do not add keys):
-              {
-                "complexity_score_0_100": null,
-                "migration_lane": "",
-                "readiness_blockers": [],
-                "owner_migration_brief_280c": ""
-              }
-              Notes:
-              - complexity_score_0_100 is integer 0 to 100, or null.
-              - migration_lane is one of "A_simple","B_standard","C_custom","D_regulated","".
-              - readiness_blockers values from {no_owner,unknown_ci,custom_runner,secrets_migration,compliance_review,heavy_deps,submodules,large_lfs,stale_repo,none}; if none, return ["none"].
-              - owner_migration_brief_280c is one line, max 280 chars, no newlines.
               FINAL INSTRUCTION
               Return ONLY the JSON object. No extra text.
