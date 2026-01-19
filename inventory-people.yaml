@@ -1,0 +1,82 @@
+name: "[RepoAnalysis] People"
+description: Extracts people-related information (emails, contributors, maintainers) from repositories.
+triggers:
+  - context:
+      projects: {}
+    manual: {}
+
+action:
+  limits:
+    maxParallel: 10
+    maxTotal: 100
+  steps:
+    - agent:
+        prompt: |-
+          You are a repository inventory extraction agent. You run inside a checked-out Git repository (root is current working directory). Your job is to output concise, machine-friendly JSON objects for a fixed set of categories. The execution engine will ask you one question per category and will store your JSON response in a CSV column.
+
+          Rules:
+          - Answer ONLY with the requested JSON object. No prose, no explanations, no markdown.
+          - Return strictly valid JSON.
+          - Use compact JSON with minimal keys.
+          - Use deterministic ordering: sort arrays lexicographically by stable keys unless otherwise specified.
+          - If unknown/not present, use null, empty string, empty array, or empty object as appropriate.
+          - Never output secret values. If you detect secrets, only report counts/types/paths, never contents.
+          - Derive answers by inspecting repo files and git history (e.g., .gitlab-ci.yml, Jenkinsfile, package manifests, build scripts, config, IaC, docs).
+          - Paths should be repo-relative, using forward slashes.
+          - Keep each JSON under ~2000 characters where possible; summarize with counts and top samples.
+          - Dates must be ISO 8601 (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ if available).
+          - When producing "top" lists, return at most five items.
+    - report:
+        outputs:
+          - key: codeowners
+            string: {}
+            title: codeowners
+            prompt: |-
+              Extract top code owners as JSON with this schema (do not add keys):
+              {
+                "codeowners": []
+              }
+              Notes:
+              - codeowners: array of up to 5 owner tokens (emails or @handles), ordered by frequency then lexicographic.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: top_committers
+            string: {}
+            title: top_committers
+            prompt: |-
+              Extract top committers as JSON with this schema (do not add keys):
+              {
+                "top_committers": []
+              }
+              Notes:
+              - top_committers: array of up to 20 objects {"email":"","commits":0}.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: top_stack_maintainers
+            string: {}
+            title: top_stack_maintainers
+            prompt: |-
+              Extract top stack maintainers as JSON with this schema (do not add keys):
+              {
+                "top_stack_maintainers": []
+              }
+              Notes:
+              - top_stack_maintainers: up to 10 objects {"email":"","commits":0}, derived by attributing commits to files that define/maintain the stack:
+                include commits touching framework/build system config and entrypoints such as:
+                package.json,yarn.lock,pnpm-lock.yaml,poetry.lock,pyproject.toml,requirements*.txt,pom.xml,build.gradle*,settings.gradle*,go.mod,go.sum,Cargo.toml,Cargo.lock,*.csproj,*.fsproj,*.sln,gradle.properties,Makefile,CMakeLists.txt,bazel WORKSPACE/BUILD files,nx.json,turbo.json,lerna.json, and similar.
+                Use default-branch history and count commits per author email across these files; return top 10.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: top_ci_maintainers
+            string: {}
+            title: top_ci_maintainers
+            prompt: |-
+              Extract top CI maintainers as JSON with this schema (do not add keys):
+              {
+                "top_ci_maintainers": []
+              }
+              Notes:
+              - top_ci_maintainers: up to 10 objects {"email":"","commits":0}, derived by counting commits per author email on default-branch history that touched CI-related files such as:
+                .gitlab-ci.yml, any included GitLab CI templates in-repo, Jenkinsfile(s), .github/workflows/*.yml, .circleci/config.yml, azure-pipelines.yml, buildkite pipeline files, teamcity settings, travis/bitrise configs, and any ci/ or .ci/ directories.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.

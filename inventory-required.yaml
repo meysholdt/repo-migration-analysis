@@ -1,0 +1,100 @@
+name: "[RepoAnalysis] Required"
+description: Extracts everything needed to work with this repository (build, run, contribute), including dependencies, secrets, execution requirements, and external systems.
+triggers:
+  - context:
+      projects: {}
+    manual: {}
+
+action:
+  limits:
+    maxParallel: 10
+    maxTotal: 100
+  steps:
+    - agent:
+        prompt: |-
+          You are a repository inventory extraction agent. You run inside a checked-out Git repository (root is current working directory). Your job is to output concise, machine-friendly JSON objects for a fixed set of categories. The execution engine will ask you one question per category and will store your JSON response in a CSV column.
+
+          Rules:
+          - Answer ONLY with the requested JSON object. No prose, no explanations, no markdown.
+          - Return strictly valid JSON.
+          - Use compact JSON with minimal keys.
+          - Use deterministic ordering: sort arrays lexicographically by stable keys unless otherwise specified.
+          - If unknown/not present, use null, empty string, empty array, or empty object as appropriate.
+          - Never output secret values. If you detect secrets, only report counts/types/paths, never contents.
+          - Derive answers by inspecting repo files and git history (e.g., .gitlab-ci.yml, Jenkinsfile, package manifests, build scripts, config, IaC, docs).
+          - Paths should be repo-relative, using forward slashes.
+          - Keep each JSON under ~2000 characters where possible; summarize with counts and top samples.
+          - Dates must be ISO 8601 (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ if available).
+          - When producing "top" lists, return at most five items.
+    - report:
+        outputs:
+          - key: required_internal_artifacts
+            string: {}
+            title: required_internal_artifacts
+            prompt: |-
+              Extract required internal artifacts as JSON with this schema (do not add keys):
+              {
+                "required_internal_artifacts": []
+              }
+              Notes:
+              - required_internal_artifacts: array of internal artifacts (packages, files, modules) downloaded from internal systems. Each entry:
+                {"name":"","type":"","source":""}
+                where:
+                * name: the artifact identifier (package name, module name, chart name, image name, etc.)
+                * type: artifact type from {npm,maven,pypi,nuget,go,cargo,docker,helm,terraform,other}
+                * source: the internal system/registry from which the artifact is obtained (hostname or registry name, e.g., "npm.internal.company.com", "artifactory.company.com", "internal-docker-registry:5000")
+              - ONLY include artifacts from internal/private systems. EXCLUDE artifacts from public registries (npmjs.org, maven central, pypi.org, docker.io, etc.).
+              - Detect internal systems by:
+                * private registry URLs in package manager configs (.npmrc, pip.conf, settings.xml, .yarnrc, go env, cargo config, etc.)
+                * internal hostnames/IPs in manifests
+                * authentication requirements in configs
+                * corporate domain patterns
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: required_repos
+            string: {}
+            title: required_repos
+            prompt: |-
+              Extract required repository dependencies and submodules as JSON with this schema (do not add keys):
+              {
+                "required_repos": [],
+                "submodules": []
+              }
+              Notes:
+              - required_repos: repositories this repo depends on, best-effort, as array of objects:
+                {"id":"","how":"manifest|git|ci|iac|doc","evidence_file":""}
+                Where id is a repo-like identifier or git URL or internal repo path inferred from internal_deps/git_dependencies/terraform module sources/CI includes/docs.
+              - submodules: git submodules referenced by this repo, as array of objects:
+                {"path":"","url":"","branch":""}
+                Use empty string when unknown.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: required_secrets
+            string: {}
+            title: required_secrets
+            prompt: |-
+              Extract required secrets as JSON with this schema (do not add keys):
+              {
+                "secrets_references": []
+              }
+              Notes:
+              - secrets_references: array of secret reference identifiers (variable names, vault keys) without values, max 30.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: execution
+            string: {}
+            title: execution
+            prompt: |-
+              Extract runner and execution constraints as JSON with this schema (do not add keys):
+              {
+                "requires_windows": false,
+                "requires_macos": false,
+                "requires_linux": false,
+                "requires_gpu_hint": false,
+                "docker_in_docker_hint": false,
+                "network_dependencies": []
+              }
+              Notes:
+              - network_dependencies: array of hostnames only (no credentials, no urls with paths), lexicographically sorted, max 30.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.

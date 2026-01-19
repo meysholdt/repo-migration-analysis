@@ -1,0 +1,96 @@
+name: "[RepoAnalysis] Provided"
+description: Extracts everything released from or deployed from this repository, including artifacts, applications, downstream dependencies, and deployment systems.
+triggers:
+  - context:
+      projects: {}
+    manual: {}
+
+action:
+  limits:
+    maxParallel: 10
+    maxTotal: 100
+  steps:
+    - agent:
+        prompt: |-
+          You are a repository inventory extraction agent. You run inside a checked-out Git repository (root is current working directory). Your job is to output concise, machine-friendly JSON objects for a fixed set of categories. The execution engine will ask you one question per category and will store your JSON response in a CSV column.
+
+          Rules:
+          - Answer ONLY with the requested JSON object. No prose, no explanations, no markdown.
+          - Return strictly valid JSON.
+          - Use compact JSON with minimal keys.
+          - Use deterministic ordering: sort arrays lexicographically by stable keys unless otherwise specified.
+          - If unknown/not present, use null, empty string, empty array, or empty object as appropriate.
+          - Never output secret values. If you detect secrets, only report counts/types/paths, never contents.
+          - Derive answers by inspecting repo files and git history (e.g., .gitlab-ci.yml, Jenkinsfile, package manifests, build scripts, config, IaC, docs).
+          - Paths should be repo-relative, using forward slashes.
+          - Keep each JSON under ~2000 characters where possible; summarize with counts and top samples.
+          - Dates must be ISO 8601 (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ if available).
+          - When producing "top" lists, return at most five items.
+    - report:
+        outputs:
+          - key: applications
+            string: {}
+            title: applications
+            prompt: |-
+              Extract detected applications in the repo as JSON with this schema (do not add keys):
+              {
+                "applications": []
+              }
+              Notes:
+              - applications is an array of detected applications in the repo. Each entry: {"name":"","description":""}.
+                Detect applications by common indicators such as:
+                - deployable units (Dockerfiles, Helm charts, k8s manifests, serverless configs)
+                - build targets (package.json name, Maven artifactId, .NET csproj AssemblyName, Python packages/apps, Android/iOS app projects)
+                - directories like apps/, services/, cmd/, src/ with distinct build manifests.
+                For description, use the best short description from README/module docs near the app, or from manifest fields (description), else empty.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: released_artifacts
+            string: {}
+            title: released_artifacts
+            prompt: |-
+              Extract released artifacts as JSON with this schema (do not add keys):
+              {
+                "released_artifacts": []
+              }
+              Notes:
+              - released_artifacts: list all artifacts released/published from this repo, best-effort. Each entry:
+                {"type":"","name":"","destination":"","evidence_file":""}
+                type examples: npm,maven,nuget,pypi,docker,helm,terraform_module,github_release,mobile_store,desktop_installer,other
+                destination examples: registry host/path, repository, bucket, store name, or empty if unknown.
+                Infer from publish steps in CI, build configs, release tooling, and docs.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: downstream_repos
+            string: {}
+            title: downstream_repos
+            prompt: |-
+              Extract downstream repository dependencies as JSON with this schema (do not add keys):
+              {
+                "downstream_repos": []
+              }
+              Notes:
+              - downstream_repos: repositories that depend on this repo, best-effort, as array of objects:
+                {"id":"","how":"doc|badge|publish|ci_trigger","evidence_file":""}
+                Only include if explicitly discoverable within this repo (e.g., README lists consumers, badges/links, publish docs that name consuming repos, CI triggers targeting other repos).
+                If not discoverable, return empty array.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: release_deploy
+            string: {}
+            title: release_deploy
+            prompt: |-
+              Extract release and deployment signals as JSON with this schema (do not add keys):
+              {
+                "release_tag_pattern_hint": "",
+                "has_changelog": false,
+                "deployment_targets": [],
+                "environments": [],
+                "approvals": { "manual_gates": false, "approval_keywords": [] }
+              }
+              Notes:
+              - deployment_targets values from {kubernetes,helm,argo,flux,terraform,ansible,serverless,vm,mobile_store,desktop_release,none}.
+              - environments: array of environment names, lexicographically sorted.
+              - approval_keywords: array of tokens/keywords found, max 20.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.

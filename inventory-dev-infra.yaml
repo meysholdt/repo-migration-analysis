@@ -1,0 +1,42 @@
+name: "[RepoAnalysis] Dev Infra"
+description: Extracts external systems and integrations used by developers for working on the code.
+triggers:
+  - context:
+      projects: {}
+    manual: {}
+
+action:
+  limits:
+    maxParallel: 10
+    maxTotal: 100
+  steps:
+    - agent:
+        prompt: |-
+          You are a repository inventory extraction agent. You run inside a checked-out Git repository (root is current working directory). Your job is to output concise, machine-friendly JSON objects for a fixed set of categories. The execution engine will ask you one question per category and will store your JSON response in a CSV column.
+
+          Rules:
+          - Answer ONLY with the requested JSON object. No prose, no explanations, no markdown.
+          - Return strictly valid JSON.
+          - Use compact JSON with minimal keys.
+          - Use deterministic ordering: sort arrays lexicographically by stable keys unless otherwise specified.
+          - If unknown/not present, use null, empty string, empty array, or empty object as appropriate.
+          - Never output secret values. If you detect secrets, only report counts/types/paths, never contents.
+          - Derive answers by inspecting repo files and git history (e.g., .gitlab-ci.yml, Jenkinsfile, package manifests, build scripts, config, IaC, docs).
+          - Paths should be repo-relative, using forward slashes.
+          - Keep each JSON under ~2000 characters where possible; summarize with counts and top samples.
+          - Dates must be ISO 8601 (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ if available).
+          - When producing "top" lists, return at most five items.
+    - report:
+        outputs:
+          - key: dev_integrations
+            string: {}
+            title: dev_integrations
+            prompt: |-
+              Extract development workflow integrations as JSON with this schema (do not add keys):
+              {
+                "external_integrations": []
+              }
+              Notes:
+              - external_integrations values from {jira,servicenow,slack,teams,pagerduty,datadog,splunk,sonarqube,artifactory,nexus,vault}, sorted.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.

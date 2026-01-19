@@ -1,0 +1,71 @@
+name: "[RepoAnalysis] CI"
+description: Extracts CI/CD pipeline configuration and metadata from repositories.
+triggers:
+  - context:
+      projects: {}
+    manual: {}
+
+action:
+  limits:
+    maxParallel: 10
+    maxTotal: 100
+  steps:
+    - agent:
+        prompt: |-
+          You are a repository inventory extraction agent. You run inside a checked-out Git repository (root is current working directory). Your job is to output concise, machine-friendly JSON objects for a fixed set of categories. The execution engine will ask you one question per category and will store your JSON response in a CSV column.
+
+          Rules:
+          - Answer ONLY with the requested JSON object. No prose, no explanations, no markdown.
+          - Return strictly valid JSON.
+          - Use compact JSON with minimal keys.
+          - Use deterministic ordering: sort arrays lexicographically by stable keys unless otherwise specified.
+          - If unknown/not present, use null, empty string, empty array, or empty object as appropriate.
+          - Never output secret values. If you detect secrets, only report counts/types/paths, never contents.
+          - Derive answers by inspecting repo files and git history (e.g., .gitlab-ci.yml, Jenkinsfile, package manifests, build scripts, config, IaC, docs).
+          - Paths should be repo-relative, using forward slashes.
+          - Keep each JSON under ~2000 characters where possible; summarize with counts and top samples.
+          - Dates must be ISO 8601 (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ if available).
+          - When producing "top" lists, return at most five items.
+    - report:
+        outputs:
+          - key: ci
+            string: {}
+            title: ci
+            prompt: |-
+              Extract CI and pipeline fingerprint (including CI maintainers) as JSON with this schema (do not add keys):
+              {
+                "ci_systems": [],
+                "gitlab": {
+                  "present": false,
+                  "includes": [],
+                  "job_count": null,
+                  "stages": [],
+                  "runner_tags": [],
+                  "images": [],
+                  "services": [],
+                  "artifacts": { "jobs_with_artifacts": null, "max_expire_in": "" },
+                  "cache": { "uses_cache": false, "cache_keys": null }
+                },
+                "jenkins": {
+                  "present": false,
+                  "jenkinsfile_paths": [],
+                  "type": "",
+                  "agents": [],
+                  "shared_libs": []
+                },
+                "github_actions": {
+                  "present": false,
+                  "workflow_count": null
+                },
+                "other_ci_configs": [],
+                "top_ci_maintainers": []
+              }
+              Notes:
+              - present fields and uses_cache are booleans.
+              - job_count, workflow_count, cache_keys, jobs_with_artifacts are integers or null.
+              - artifacts.max_expire_in is a string (e.g., "1 week") or empty string.
+              - jenkins.type is one of "declarative","scripted","unknown","".
+              - top_ci_maintainers: up to 10 objects {"email":"","commits":0}, derived by counting commits per author email on default-branch history that touched CI-related files such as:
+                .gitlab-ci.yml, any included GitLab CI templates in-repo, Jenkinsfile(s), .github/workflows/*.yml, .circleci/config.yml, azure-pipelines.yml, buildkite pipeline files, teamcity settings, travis/bitrise configs, and any ci/ or .ci/ directories.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.

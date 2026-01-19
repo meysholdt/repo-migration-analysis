@@ -1,0 +1,133 @@
+name: "[RepoAnalysis] Metadata"
+description: Extracts repository metadata, tech stack, quality tools, and compliance information.
+triggers:
+  - context:
+      projects: {}
+    manual: {}
+
+action:
+  limits:
+    maxParallel: 10
+    maxTotal: 100
+  steps:
+    - agent:
+        prompt: |-
+          You are a repository inventory extraction agent. You run inside a checked-out Git repository (root is current working directory). Your job is to output concise, machine-friendly JSON objects for a fixed set of categories. The execution engine will ask you one question per category and will store your JSON response in a CSV column.
+
+          Rules:
+          - Answer ONLY with the requested JSON object. No prose, no explanations, no markdown.
+          - Return strictly valid JSON.
+          - Use compact JSON with minimal keys.
+          - Use deterministic ordering: sort arrays lexicographically by stable keys unless otherwise specified.
+          - If unknown/not present, use null, empty string, empty array, or empty object as appropriate.
+          - Never output secret values. If you detect secrets, only report counts/types/paths, never contents.
+          - Derive answers by inspecting repo files and git history (e.g., .gitlab-ci.yml, Jenkinsfile, package manifests, build scripts, config, IaC, docs).
+          - Paths should be repo-relative, using forward slashes.
+          - Keep each JSON under ~2000 characters where possible; summarize with counts and top samples.
+          - Dates must be ISO 8601 (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SSZ if available).
+          - When producing "top" lists, return at most five items.
+    - report:
+        outputs:
+          - key: identity
+            string: {}
+            title: identity
+            prompt: |-
+              Extract identity and basic repository metadata as JSON with this schema (do not add keys):
+              {
+                "name": "",
+                "default_branch": "",
+                "archived_hint": false,
+                "last_commit_date": "",
+                "first_commit_date": "",
+                "commit_count": 0,
+                "size_mb_hint": null,
+                "uses_lfs": false,
+                "lfs_patterns": []
+              }
+              Notes:
+              - archived_hint, uses_lfs are booleans.
+              - commit_count is an integer (use 0 if unknown).
+              - size_mb_hint is integer MB or null if unknown.
+              - lfs_patterns is an array of glob strings.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: primary_languages
+            string: {}
+            title: primary_languages
+            prompt: |-
+              Extract primary languages as JSON with this schema (do not add keys):
+              {
+                "primary_languages": []
+              }
+              Notes:
+              - primary_languages: array of up to 10 objects {"lang":"","loc":0}.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: frameworks_tools
+            string: {}
+            title: frameworks_tools
+            prompt: |-
+              Extract frameworks and tools as JSON with this schema (do not add keys):
+              {
+                "frameworks_tools": []
+              }
+              Notes:
+              - frameworks_tools: array of strings, lexicographically sorted.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: build_systems
+            string: {}
+            title: build_systems
+            prompt: |-
+              Extract build systems as JSON with this schema (do not add keys):
+              {
+                "build_systems": []
+              }
+              Notes:
+              - build_systems: array of strings, lexicographically sorted.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: build_entrypoints
+            string: {}
+            title: build_entrypoints
+            prompt: |-
+              Extract build entrypoints as JSON with this schema (do not add keys):
+              {
+                "build_entrypoints": []
+              }
+              Notes:
+              - build_entrypoints: array of strings, lexicographically sorted.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: quality_security
+            string: {}
+            title: quality_security
+            prompt: |-
+              Extract tests, quality gates, and security tooling as JSON with this schema (do not add keys):
+              {
+                "test_tools": [],
+                "coverage_tools": [],
+                "lint_format_tools": [],
+                "security_tools": [],
+                "supply_chain": { "sbom": false, "signing": false, "tools": [] }
+              }
+              Notes:
+              - arrays are lexicographically sorted.
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
+          - key: compliance
+            string: {}
+            title: compliance
+            prompt: |-
+              Extract compliance metadata as JSON with this schema (do not add keys):
+              {
+                "secret_scanner_findings": { "findings": null, "types": [], "paths": [] },
+                "compliance_flags": []
+              }
+              Notes:
+              - secret_scanner_findings.findings is integer or null.
+              - secret_scanner_findings.types: array of finding type labels, sorted.
+              - secret_scanner_findings.paths: array of up to 5 repo-relative paths.
+              - compliance_flags values from {pii,phi,pci,gdpr,export,sox,none}; if none detected, return ["none"].
+              FINAL INSTRUCTION
+              Return ONLY the JSON object. No extra text.
