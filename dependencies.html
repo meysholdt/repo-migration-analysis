@@ -69,11 +69,13 @@
 
       // Find the dependencies column (case-insensitive)
       const sampleRow = data[0] || {};
-      const depKey = Object.keys(sampleRow).find(k => k.toLowerCase() === 'dependencies');
+      const headers = Object.keys(sampleRow);
+      const depKey = headers.find(k => k.toLowerCase() === 'dependencies');
       if (!depKey) throw new Error('No "dependencies" column found in CSV.');
 
-      // Detect the repo identifier column (first column)
-      const repoKey = Object.keys(sampleRow)[0];
+      // Prefer "Repository URL" column for the repo identifier; fall back to first column
+      const urlKey = headers.find(k => k.toLowerCase() === 'repository url');
+      const repoKey = urlKey || headers[0];
 
       // Collect edges: source repo → dependency repo
       // Use a map from normalized URL → original URL (first seen wins) for display
@@ -81,7 +83,10 @@
       const nodeMap = new Map(); // normalizedUrl → original url
       function addNode(url) {
         const key = normalizeUrl(url);
-        if (!nodeMap.has(key)) nodeMap.set(key, url);
+        // Prefer full URLs over short names
+        if (!nodeMap.has(key) || (url.startsWith('http') && !nodeMap.get(key).startsWith('http'))) {
+          nodeMap.set(key, url);
+        }
       }
 
       for (const row of data) {
