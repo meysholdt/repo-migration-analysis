@@ -89,8 +89,9 @@
         for (const dep of deps) {
           const target = (dep.repo || '').trim();
           if (!target) continue;
+          const sourceFile = (dep.source || '').split('/').pop() || '';
           nodes.add(target);
-          edges.push([source, target]);
+          edges.push([source, target, sourceFile]);
         }
       }
 
@@ -103,8 +104,12 @@
         const label = shortName(url);
         lines.push(`  ${id}["${label}"]`);
       }
-      for (const [src, tgt] of edges) {
-        lines.push(`  ${nodeId(src)} --> ${nodeId(tgt)}`);
+      for (const [src, tgt, label] of edges) {
+        if (label) {
+          lines.push(`  ${nodeId(src)} -->|${label}| ${nodeId(tgt)}`);
+        } else {
+          lines.push(`  ${nodeId(src)} --> ${nodeId(tgt)}`);
+        }
       }
 
       // Add click handlers to open repo URLs
