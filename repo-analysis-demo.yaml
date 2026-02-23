@@ -62,14 +62,17 @@ action:
             title: dependencies
             prompt: |-
               Find all references to other git repositories this repo depends on.
-              Check these sources:
+              First, determine the hostname of the SCM platform hosting this repo (e.g. github.com, gitlab.example.com) by running: git remote get-url origin
+              Then check these sources:
               - .gitmodules (submodules)
               - CI includes that reference other repos (e.g. GitLab CI include:project, GitHub Actions uses: owner/repo)
               - Terraform module source fields pointing to git repos
               - go.mod replace directives pointing to git repos
               - Any git:// or ssh:// or https://*.git URLs in config files
               - Package manifests referencing git repos directly (e.g. "git+https://..." in package.json)
+              - Any URL or path in any file that references the same SCM hostname and points to a different repo (e.g. links in docs, configs, scripts, or IaC that mention https://<scm-host>/org/other-repo)
               Do NOT include dependencies on package registries (npm, PyPI, Maven Central, Docker Hub, etc.).
+              Do NOT include references back to this repo itself.
               Return a JSON array, max 10 entries:
               [{"repo":"<repo URL or identifier>","source":"<file where reference was found>"}]
               If none found, return [].
