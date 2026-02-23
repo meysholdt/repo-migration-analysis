@@ -50,7 +50,7 @@ action:
             title: toolsmiths
             prompt: |-
               Identify the "tools" files: CI configs, Dockerfiles, Makefiles, build scripts, package manager lockfiles, IaC configs, and similar.
-              Run: git log --since="1 year ago" --format="%ae" -- <those files> | sort | uniq -c | sort -rn | head -3
+              Run: git log --format="%ae" -- <those files> | sort | uniq -c | sort -rn | head -3
               Return a JSON array of up to 3 entries, ranked by commit count descending:
               [{"email":"","commits":0}]
               If no relevant commits found, return [].
