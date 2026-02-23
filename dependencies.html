@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Repo Dependencies</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, -apple-system, sans-serif; background: #f5f5f5; color: #222; }
+    #drop-zone {
+      max-width: 720px; margin: 80px auto; padding: 64px 32px;
+      border: 3px dashed #bbb; border-radius: 12px;
+      text-align: center; color: #888; font-size: 1.1rem;
+      transition: border-color .2s, background .2s;
+    }
+    #drop-zone.over { border-color: #4a90d9; background: #eaf2fb; }
+    #drop-zone h1 { font-size: 1.4rem; color: #444; margin-bottom: 8px; }
+    #error { max-width: 720px; margin: 16px auto; color: #c0392b; font-size: .95rem; }
+    #diagram { max-width: 100%; margin: 32px auto; text-align: center; overflow-x: auto; }
+    #diagram svg { max-width: 100%; height: auto; }
+  </style>
+</head>
+<body>
+  <div id="drop-zone">
+    <h1>Repo Dependency Viewer</h1>
+    <p>Drag &amp; drop a report CSV here</p>
+  </div>
+  <div id="error"></div>
+  <div id="diagram"></div>
+
+  <script src="https://cdn.jsdelivr.net/npm/papaparse@5.4.1/papaparse.min.js"></script>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: false, theme: 'default', securityLevel: 'loose' });
+
+    const dropZone = document.getElementById('drop-zone');
+    const errorEl = document.getElementById('error');
+    const diagramEl = document.getElementById('diagram');
+
+    // --- helpers ---
+
+    // Shorten a repo URL to "org/name" for node labels
+    function shortName(url) {
+      try {
+        const path = new URL(url).pathname.replace(/\.git$/, '').replace(/^\//, '');
+        const parts = path.split('/');
+        return parts.length >= 2 ? parts.slice(-2).join('/') : path;
+      } catch {
+        return url;
+      }
+    }
+
+    // Stable id safe for Mermaid node identifiers
+    function nodeId(url) {
+      return 'n' + Array.from(url).reduce((h, c) => ((h << 5) - h + c.charCodeAt(0)) | 0, 0).toString(36).replace(/-/g, '_');
+    }
+
+    // --- CSV → Mermaid ---
+
+    function csvToMermaid(csvText) {
+      const { data, errors } = Papa.parse(csvText.trim(), { header: true, skipEmptyLines: true });
+      if (errors.length && !data.length) throw new Error('CSV parse error: ' + errors[0].message);
+
+      // Find the dependencies column (case-insensitive)
+      const sampleRow = data[0] || {};
+      const depKey = Object.keys(sampleRow).find(k => k.toLowerCase() === 'dependencies');
+      if (!depKey) throw new Error('No "dependencies" column found in CSV.');
+
+      // Detect the repo identifier column (first column)
+      const repoKey = Object.keys(sampleRow)[0];
+
+      // Collect edges: source repo → dependency repo
+      const edges = [];
+      const nodes = new Set();
+
+      for (const row of data) {
+        const source = (row[repoKey] || '').trim();
+        if (!source) continue;
+
+        let deps;
+        try {
+          deps = JSON.parse(row[depKey]);
+        } catch {
+          continue; // skip rows with unparseable dependencies
+        }
+        if (!Array.isArray(deps) || deps.length === 0) continue;
+
+        nodes.add(source);
+        for (const dep of deps) {
+          const target = (dep.repo || '').trim();
+          if (!target) continue;
+          nodes.add(target);
+          edges.push([source, target]);
+        }
+      }
+
+      if (edges.length === 0) throw new Error('No dependency edges found. Make sure the CSV contains repos with non-empty dependencies.');
+
+      // Build Mermaid graph definition
+      const lines = ['graph LR'];
+      for (const url of nodes) {
+        const id = nodeId(url);
+        const label = shortName(url);
+        lines.push(`  ${id}["${label}"]`);
+      }
+      for (const [src, tgt] of edges) {
+        lines.push(`  ${nodeId(src)} --> ${nodeId(tgt)}`);
+      }
+
+      // Add click handlers to open repo URLs
+      for (const url of nodes) {
+        lines.push(`  click ${nodeId(url)} "${url}" _blank`);
+      }
+
+      return lines.join('\n');
+    }
+
+    // --- render ---
+
+    async function render(csvText) {
+      errorEl.textContent = '';
+      diagramEl.innerHTML = '';
+      dropZone.style.display = 'none';
+
+      try {
+        const def = csvToMermaid(csvText);
+        const { svg } = await mermaid.render('dep-graph', def);
+        diagramEl.innerHTML = svg;
+      } catch (e) {
+        errorEl.textContent = e.message;
+        dropZone.style.display = '';
+      }
+    }
+
+    // --- drag & drop ---
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('over');
+      const file = e.dataTransfer.files[0];
+      if (!file) return;
+      file.text().then(render);
+    });
+
+    // also support click-to-select
+    dropZone.addEventListener('click', () => {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.csv,text/csv';
+      input.onchange = () => { if (input.files[0]) input.files[0].text().then(render); };
+      input.click();
+    });
+  </script>
+</body>
+</html>
