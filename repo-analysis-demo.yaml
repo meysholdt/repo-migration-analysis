@@ -74,7 +74,8 @@ action:
               Do NOT include dependencies on package registries (npm, PyPI, Maven Central, Docker Hub, etc.).
               Do NOT include references back to this repo itself.
               Return a JSON array, max 10 entries:
-              [{"repo":"<repo URL or identifier>","source":"<file where reference was found>"}]
+              [{"repo":"<full HTTPS repo URL, e.g. https://github.com/org/repo>","source":"<file where reference was found>"}]
+              Always use the full HTTPS URL for "repo". Never use short forms like owner/repo or relative paths.
               If none found, return [].
               FINAL INSTRUCTION
               Return ONLY the JSON array. No extra text.
