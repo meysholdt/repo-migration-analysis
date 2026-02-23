@@ -1,0 +1,77 @@
+name: repo-analysis-demo
+description: Produces a concise snapshot of a repository — what it does, how it's built, who maintains the tooling, and what other repos it depends on.
+triggers:
+  - context:
+      projects: {}
+    manual: {}
+
+action:
+  limits:
+    maxParallel: 10
+    maxTotal: 100
+  steps:
+    - agent:
+        prompt: |-
+          You are a repo analysis agent running inside a checked-out Git repository.
+          Rules:
+          - Answer ONLY with what is requested. No extra prose, no markdown fences.
+          - When asked for plain text, return exactly one sentence.
+          - When asked for JSON, return strictly valid, compact JSON.
+          - Keep each answer well under 500 characters.
+          - If unknown, use "" or [].
+    - report:
+        outputs:
+          - key: description
+            string: {}
+            title: description
+            prompt: |-
+              Inspect README, docs, manifests, and source code.
+              FINAL INSTRUCTION
+              Return ONLY one sentence describing what the app or apps in this repo do. No JSON, no extra text.
+
+          - key: stack
+            string: {}
+            title: stack
+            prompt: |-
+              Inspect package manifests, source files, Dockerfiles, and configs.
+              FINAL INSTRUCTION
+              Return ONLY one sentence describing the runtime stack (languages, frameworks, databases, runtimes). No JSON, no extra text.
+
+          - key: tools
+            string: {}
+            title: tools
+            prompt: |-
+              Inspect build scripts, CI configs (.gitlab-ci.yml, Jenkinsfile, .github/workflows/, .circleci/, azure-pipelines.yml, etc.), Makefiles, and package manifests.
+              FINAL INSTRUCTION
+              Return ONLY one sentence describing the build/deploy tools and the CI/CD platform used by this repo. No JSON, no extra text.
+
+          - key: toolsmiths
+            string: {}
+            title: toolsmiths
+            prompt: |-
+              Identify the "tools" files: CI configs, Dockerfiles, Makefiles, build scripts, package manager lockfiles, IaC configs, and similar.
+              Run: git log --since="1 year ago" --format="%ae" -- <those files> | sort | uniq -c | sort -rn | head -3
+              Return a JSON array of up to 3 entries, ranked by commit count descending:
+              [{"email":"","commits":0}]
+              If no relevant commits found, return [].
+              FINAL INSTRUCTION
+              Return ONLY the JSON array. No extra text.
+
+          - key: dependencies
+            string: {}
+            title: dependencies
+            prompt: |-
+              Find all references to other git repositories this repo depends on.
+              Check these sources:
+              - .gitmodules (submodules)
+              - CI includes that reference other repos (e.g. GitLab CI include:project, GitHub Actions uses: owner/repo)
+              - Terraform module source fields pointing to git repos
+              - go.mod replace directives pointing to git repos
+              - Any git:// or ssh:// or https://*.git URLs in config files
+              - Package manifests referencing git repos directly (e.g. "git+https://..." in package.json)
+              Do NOT include dependencies on package registries (npm, PyPI, Maven Central, Docker Hub, etc.).
+              Return a JSON array, max 10 entries:
+              [{"repo":"<repo URL or identifier>","source":"<file where reference was found>"}]
+              If none found, return [].
+              FINAL INSTRUCTION
+              Return ONLY the JSON array. No extra text.
